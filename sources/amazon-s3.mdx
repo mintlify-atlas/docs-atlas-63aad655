@@ -1,0 +1,122 @@
+---
+title: 'Amazon S3'
+description: 'Load a CSV file from Amazon S3 using the s3 source type, with support for public buckets and IAM-authenticated private access.'
+---
+
+## When to use
+
+Use the `s3` source type to load a CSV file stored in an Amazon S3 bucket. Public buckets need no credentials. Private buckets require IAM access key and secret key. Optionally, you can target a specific object version.
+
+## How it works
+
+Connector configures the Spark Hadoop S3A filesystem with the provided credentials and region, then instructs Spark to read directly from `s3a://BUCKET/KEY`. No intermediate download step occurs — Spark streams the file directly from S3.
+
+The region is used to set the S3A endpoint to `s3.REGION.amazonaws.com`. For example, `ap-south-1` resolves to `s3.ap-south-1.amazonaws.com`.
+
+## Fields
+
+<ParamField body="type" type="string" required>
+  Must be `"s3"`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  Must be `"csv"`.
+</ParamField>
+
+<ParamField body="link-type" type="string" required>
+  `"public"` for publicly accessible objects. `"private"` when IAM credentials are required.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  <Expandable title="source fields">
+    <ParamField body="source.bucket" type="string" required>
+      The S3 bucket name. Must be a non-blank string.
+    </ParamField>
+    <ParamField body="source.key" type="string" required>
+      The object key (path within the bucket), e.g., `data/transaction.csv`. Must be a non-blank string.
+    </ParamField>
+    <ParamField body="source.region" type="string">
+      Optional. The AWS region the bucket resides in, e.g., `ap-south-1`. When provided, sets the S3A endpoint to `s3.<region>.amazonaws.com`.
+    </ParamField>
+    <ParamField body="source.version-id" type="string">
+      Optional. The version ID of a specific object version to read. Only applicable when S3 versioning is enabled on the bucket.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="auth" type="object">
+  Required when `link-type` is `"private"`.
+  <Expandable title="auth fields">
+    <ParamField body="auth.access-key" type="string" required>
+      AWS IAM access key ID.
+    </ParamField>
+    <ParamField body="auth.secret-key" type="string" required>
+      AWS IAM secret access key.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  <Expandable title="options fields">
+    <ParamField body="options.header" type="boolean" default="true">
+      Whether the first row of the CSV is a header row.
+    </ParamField>
+    <ParamField body="options.delimiter" type="string" default=",">
+      Column delimiter character.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Request examples
+
+<Tabs>
+  <Tab title="Public">
+    ```json
+    {
+        "type": "s3",
+        "format": "csv",
+        "link-type": "public",
+        "source": {
+            "bucket": "my-bucket",
+            "key": "transaction.csv",
+            "region": "ap-south-1"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Private with version">
+    ```json
+    {
+        "type": "s3",
+        "format": "csv",
+        "link-type": "private",
+        "source": {
+            "bucket": "my-bucket",
+            "key": "transaction.csv",
+            "region": "ap-south-1",
+            "version-id": "VERSION-ID"
+        },
+        "auth": {
+            "access-key": "S3-ACCESS-KEY",
+            "secret-key": "S3-SECRET-KEY"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  `source.region` is optional. When provided, Connector sets the Hadoop S3A endpoint to `s3.<region>.amazonaws.com` (e.g., `ap-south-1` → `s3.ap-south-1.amazonaws.com`). When omitted, the default S3A endpoint is used.
+</Note>
+
+<Info>
+  Spark reads from S3 using the Hadoop S3A filesystem (`s3a://`). Ensure the IAM credentials provided have at least `s3:GetObject` permission on the target key.
+</Info>

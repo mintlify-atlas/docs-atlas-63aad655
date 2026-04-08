@@ -1,0 +1,70 @@
+---
+title: "Introduction"
+description: "Connector is a Clojure HTTP service that loads CSV data from cloud and local sources using Apache Spark and returns a preview of the first 10 rows."
+---
+
+Connector exposes a single `POST /data-load` endpoint. Send it a JSON body describing your data source and credentials, and it returns up to 10 rows of parsed CSV data. It is built on [Apache Spark 3.5](https://spark.apache.org/) via the [Flambo](https://github.com/yieldbot/flambo) Clojure wrapper, runs on [Ring](https://github.com/ring-clojure/ring) with a Jetty adapter, and is packaged as a standalone uberjar.
+
+## Supported sources
+
+Connector can load CSV files from five source types:
+
+| Source | Type value | Public | Private |
+|---|---|---|---|
+| Local filesystem | `local` | Yes | — |
+| Google Drive | `gdrive` | Yes | Yes (OAuth2) |
+| Dropbox | `dropbox` | Yes | Yes (access token) |
+| Amazon S3 | `s3` | Yes | Yes (IAM keys) |
+| Google Cloud Storage | `gcs` | Yes | Yes (service account) |
+
+<Note>
+  `format` must always be `"csv"`. No other formats are currently supported.
+</Note>
+
+## Prerequisites
+
+Before running Connector, make sure you have the following installed:
+
+- **JDK 17** — verify with `java -version`; the major version reported must be `17`
+- **Leiningen 2.0.0+** — see [https://github.com/technomancy/leiningen](https://github.com/technomancy/leiningen) for installation instructions
+
+<Info>
+  Connector's `project.clj` sets `-Xmx2g` and several `--add-opens` JVM flags required by Spark. These are applied automatically when you run via Leiningen and do not require manual configuration.
+</Info>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install prerequisites, configure the service, and send your first request in minutes.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/data-load">
+    Full request body schema, all fields, validation rules, and response structure for `POST /data-load`.
+  </Card>
+  <Card title="Google Drive" icon="google-drive" href="/sources/google-drive">
+    Load public shared files or private files using OAuth2 client credentials and refresh tokens.
+  </Card>
+  <Card title="Amazon S3" icon="aws" href="/sources/amazon-s3">
+    Read from public or private S3 buckets using IAM access and secret keys, with optional version pinning.
+  </Card>
+  <Card title="Authentication" icon="lock" href="/guides/authentication">
+    Understand which credentials are required for each source type and how to pass them in the request body.
+  </Card>
+  <Card title="Running and building" icon="terminal" href="/guides/running-and-building">
+    Build the uberjar, configure `config/config.edn`, and run the service in local or cluster mode.
+  </Card>
+</CardGroup>
+
+## Architecture
+
+Connector uses Apache Spark as its CSV loading engine. When a request arrives at `POST /data-load`, the service:
+
+1. Validates the request body against a `clojure.spec` schema defined in `connector.specs`.
+2. Normalizes the body into a typed config map in `connector.core/normalize-body`.
+3. Resolves the source path — for S3 and GCS this is a native `s3a://` or `gs://` URI; for Google Drive and Dropbox, `connector.http-fetcher` downloads the file to a temporary local path first.
+4. Configures Spark's Hadoop filesystem settings for S3 (`fs.s3a.*`) or GCS (`fs.gs.*`) when required.
+5. Calls `flambo.sql/read-csv` against the resolved path with `PERMISSIVE` mode, and returns the first 10 rows as JSON via `connector.utils/dataset->preview`.
+
+<Info>
+  Spark is declared as a `:provided` dependency in `project.clj`. For local development, `lein run` starts Spark in local mode. For production, point `spark.app.master-url` in `config/config.edn` to your Spark master (e.g., `spark://host:7077`).
+</Info>

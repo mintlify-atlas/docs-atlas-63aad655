@@ -1,0 +1,229 @@
+---
+title: 'POST /data-load'
+description: 'Load a CSV file from a cloud or local source and receive a preview of up to 10 rows.'
+---
+
+## Overview
+
+| Field        | Value                        |
+|--------------|------------------------------|
+| Method       | `POST`                       |
+| Path         | `/data-load`                 |
+| Content-Type | `application/json`           |
+| Returns      | JSON with up to 10 preview rows |
+
+<RequestExample>
+
+```bash cURL
+curl -X POST http://localhost:3000/data-load \
+    -H "Content-Type: application/json" \
+    -d '{
+        "type": "local",
+        "format": "csv",
+        "link-type": "public",
+        "source": {
+            "path": "/data/input.csv"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }'
+```
+
+</RequestExample>
+
+## Path parameters
+
+None.
+
+## Query parameters
+
+None.
+
+## Request body
+
+<ParamField body="type" type="string" required>
+  Source type. One of: `local`, `gdrive`, `dropbox`, `s3`, `gcs`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  File format. Must be `"csv"`. No other formats are currently supported.
+</ParamField>
+
+<ParamField body="link-type" type="string" default="public">
+  Access mode for the source. One of: `"public"`, `"private"`. When omitted, defaults to `"public"`.
+  Private sources require credentials in the `auth` object.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  Source location. Required sub-fields depend on the value of `type`.
+
+  <Expandable title="source properties">
+    <ParamField body="path" type="string">
+      File system path. Required for `local`. Used as the private file path for `dropbox`.
+    </ParamField>
+    <ParamField body="url" type="string">
+      URL starting with `http`. Required for `gdrive`. Used as the public share link for `dropbox`.
+    </ParamField>
+    <ParamField body="bucket" type="string">
+      Bucket name. Required for `s3` and `gcs`.
+    </ParamField>
+    <ParamField body="key" type="string">
+      Object key (path within the bucket). Required for `s3` and `gcs`.
+    </ParamField>
+    <ParamField body="region" type="string">
+      AWS region (e.g. `ap-south-1`). Used for `s3`.
+    </ParamField>
+    <ParamField body="revision-id" type="string">
+      Google Drive revision ID or Dropbox revision. Optional.
+    </ParamField>
+    <ParamField body="version-id" type="string">
+      S3 object version ID. Optional.
+    </ParamField>
+    <ParamField body="generation" type="string">
+      GCS object generation. Optional.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="auth" type="object">
+  Provider credentials. Required when `link-type` is `"private"`. Required sub-fields depend on `type`.
+
+  <Expandable title="auth properties">
+    <ParamField body="token" type="string">
+      Dropbox API token. Required for `dropbox` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="refresh-token" type="string">
+      Google OAuth2 refresh token. Required for `gdrive` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="client-id" type="string">
+      Google OAuth2 client ID. Required for `gdrive` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="client-secret" type="string">
+      Google OAuth2 client secret. Required for `gdrive` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="access-key" type="string">
+      AWS IAM access key. Required for `s3` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="secret-key" type="string">
+      AWS IAM secret key. Required for `s3` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="project-id" type="string">
+      GCP project ID. Required for `gcs` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="client-email" type="string">
+      GCP service account email. Required for `gcs` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="private-key" type="string">
+      GCP service account private key. Use `\n` for newlines. Required for `gcs` with `link-type: "private"`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  CSV parsing options.
+
+  <Expandable title="options properties">
+    <ParamField body="header" type="boolean" default="true">
+      Whether the first row of the CSV file is a header row. Column names in the response are taken from this row.
+    </ParamField>
+    <ParamField body="delimiter" type="string" default=",">
+      Column delimiter character.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Responses
+
+<ResponseExample>
+
+```json 200
+{
+    "status": "success",
+    "source": "local",
+    "duration-ms": 123,
+    "data": [
+        { "columnA": "value1", "columnB": "value2" }
+    ]
+}
+```
+
+```json 400
+{
+    "status": "error",
+    "msg": "Invalid request body",
+    "error": "...spec explain string...",
+    "duration-ms": 15
+}
+```
+
+```json 500
+{
+    "status": "error",
+    "msg": "Internal server error",
+    "duration-ms": 20
+}
+```
+
+</ResponseExample>
+
+### 200 Success
+
+<ResponseField name="status" type="string" required>
+  Always `"success"`.
+</ResponseField>
+
+<ResponseField name="source" type="string" required>
+  The source type used for the request (e.g. `"local"`, `"gdrive"`, `"s3"`).
+</ResponseField>
+
+<ResponseField name="duration-ms" type="number" required>
+  Total processing time in milliseconds, including network download and Spark read.
+</ResponseField>
+
+<ResponseField name="data" type="array" required>
+  Up to 10 rows from the CSV file. Each element is an object whose keys are column names and whose values are strings (or `null` for empty cells).
+</ResponseField>
+
+### 400 Validation error
+
+Returned when the request body fails schema validation.
+
+<ResponseField name="status" type="string" required>
+  Always `"error"`.
+</ResponseField>
+
+<ResponseField name="msg" type="string" required>
+  Always `"Invalid request body"`.
+</ResponseField>
+
+<ResponseField name="error" type="string" required>
+  Detailed validation message from `clojure.spec/explain-str`.
+</ResponseField>
+
+<ResponseField name="duration-ms" type="number" required>
+  Time elapsed before the error was returned, in milliseconds.
+</ResponseField>
+
+### 500 Internal error
+
+Returned when the service encounters an unexpected error (e.g. Spark failure, unreachable cloud storage).
+
+<ResponseField name="status" type="string" required>
+  Always `"error"`.
+</ResponseField>
+
+<ResponseField name="msg" type="string" required>
+  Always `"Internal server error"`. Internal error details are not exposed in the response.
+</ResponseField>
+
+<ResponseField name="duration-ms" type="number" required>
+  Time elapsed before the error was returned, in milliseconds.
+</ResponseField>
+
+### 404 Not found
+
+<Note>
+  Any path other than `/data-load` returns a `404` response with body `{"error": "NOT_FOUND"}`.
+</Note>

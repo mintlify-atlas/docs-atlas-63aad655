@@ -1,0 +1,108 @@
+---
+title: 'Dropbox'
+description: 'Load a CSV file from Dropbox using the dropbox source type, with support for public shared links, private token-based access, and specific revision downloads.'
+---
+
+## When to use
+
+Use the `dropbox` source type to load a CSV file from Dropbox. For publicly shared links, provide `source.url`. For files in a private Dropbox account, provide `source.path` and an API token. You can also target a specific revision.
+
+## How it works
+
+For public links, Connector rewrites the URL so that `dl=0` becomes `dl=1` (forcing a direct download), then fetches the file over HTTP. For private files or revision downloads, it calls the Dropbox content API (`content.dropboxapi.com/2/files/download`) with a Bearer token and a `Dropbox-API-Arg` header containing the file path or revision. The downloaded file is saved to a temporary location and passed to Spark.
+
+## Fields
+
+<ParamField body="type" type="string" required>
+  Must be `"dropbox"`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  Must be `"csv"`.
+</ParamField>
+
+<ParamField body="link-type" type="string" required>
+  `"public"` for shared links. `"private"` when a Dropbox API token is required.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  <Expandable title="source fields">
+    <ParamField body="source.url" type="string">
+      A Dropbox shared link (e.g., `https://www.dropbox.com/s/FILE_ID/file.csv?dl=0`). Required when `link-type` is `"public"`. The `dl=0` query parameter is automatically converted to `dl=1` to force a direct download.
+    </ParamField>
+    <ParamField body="source.path" type="string">
+      The Dropbox file path (e.g., `/customers.csv`). Required when `link-type` is `"private"`.
+    </ParamField>
+    <ParamField body="source.revision-id" type="string">
+      Optional. Downloads a specific revision via the Dropbox content API. Requires `auth.token`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="auth" type="object">
+  Required when `link-type` is `"private"` or when `source.revision-id` is provided.
+  <Expandable title="auth fields">
+    <ParamField body="auth.token" type="string" required>
+      A Dropbox API access token with read permissions on the target file.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  <Expandable title="options fields">
+    <ParamField body="options.header" type="boolean" default="true">
+      Whether the first row of the CSV is a header row.
+    </ParamField>
+    <ParamField body="options.delimiter" type="string" default=",">
+      Column delimiter character.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Request examples
+
+<Tabs>
+  <Tab title="Public">
+    ```json
+    {
+        "type": "dropbox",
+        "format": "csv",
+        "link-type": "public",
+        "source": {
+            "url": "https://www.dropbox.com/s/FILE_ID/customers.csv?dl=0"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Private">
+    ```json
+    {
+        "type": "dropbox",
+        "format": "csv",
+        "link-type": "private",
+        "source": {
+            "path": "/customers-100000.csv"
+        },
+        "auth": {
+            "token": "DROPBOX-TOKEN"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  `source.url` and `source.path` serve different purposes. Use `source.url` with a Dropbox sharing link for public access. Use `source.path` (a Dropbox file path starting with `/`) together with `auth.token` for private access.
+</Note>
+
+<Tip>
+  When `source.revision-id` is provided, the Dropbox content API is called with the path `rev:REVISION_ID`. This requires `auth.token` regardless of `link-type`.
+</Tip>

@@ -1,0 +1,106 @@
+---
+title: 'Spark session configuration'
+description: 'How Connector creates and configures its Apache Spark session, including cloud filesystem support and startup warmup.'
+---
+
+Connector uses Apache Spark 3.5 (via [Flambo](https://github.com/yieldbot/flambo)) to read CSV files into distributed DataFrames. A single long-lived `SparkSession` is created at startup and managed by [Mount](https://github.com/tolitius/mount). It is shared across all requests.
+
+## Required config
+
+Two config values are required before a session can be created:
+
+<ParamField path="spark.app.name" type="string" required>
+  The Spark application name shown in the Spark UI and cluster logs.
+</ParamField>
+
+<ParamField path="spark.app.master-url" type="string" required>
+  The Spark master URL. Examples:
+  - `spark://your-host:7077` — standalone cluster
+  - `local[*]` — local mode, all cores (development only)
+</ParamField>
+
+See [Configuration overview](/configuration/overview) for the full config schema and a `config/config.edn` example.
+
+## Classpath configuration
+
+The uberjar bundles all dependencies, including the Hadoop S3A and GCS connectors. Spark executors need access to these classes, so the jar is added to three Spark properties at session creation:
+
+| Property | Purpose |
+|---|---|
+| `spark.executor.extraClassPath` | Makes bundled classes available to executor JVMs |
+| `spark.driver.extraClassPath` | Makes bundled classes available to the driver JVM |
+| `spark.jars` | Distributes the jar to executor nodes |
+
+All three point to `target/connector-0.1.0-SNAPSHOT-standalone.jar` relative to the working directory.
+
+<Note>
+  Build the uberjar with `lein uberjar` before starting the service. If the jar is missing, session creation will fail.
+</Note>
+
+## Cloud filesystem support
+
+Filesystem implementations are registered at session creation time. No additional configuration is required beyond providing credentials in the data-load request.
+
+### Amazon S3
+
+| Spark property | Value |
+|---|---|
+| `spark.hadoop.fs.s3a.impl` | `org.apache.hadoop.fs.s3a.S3AFileSystem` |
+| `spark.hadoop.fs.s3a.path.style.access` | `true` |
+
+Paths use the `s3a://` scheme. Credentials (access key and secret key) are passed per-request and are not stored in the session.
+
+### Google Cloud Storage
+
+| Spark property | Value |
+|---|---|
+| `spark.hadoop.fs.gs.impl` | `com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem` |
+| `spark.hadoop.fs.AbstractFileSystem.gs.impl` | `com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS` |
+
+Paths use the `gs://` scheme. A service account key (client email and private key) is passed per-request.
+
+## CSV read options
+
+All CSV sources are read with the following default options applied by Spark's `DataFrameReader`:
+
+| Option | Value | Effect |
+|---|---|---|
+| `mode` | `PERMISSIVE` | Malformed rows are kept; corrupt fields are set to null |
+| `nullValue` | `""` | Empty strings are read as null |
+| `ignoreLeadingWhiteSpace` | `true` | Leading whitespace is stripped from field values |
+| `ignoreTrailingWhiteSpace` | `true` | Trailing whitespace is stripped from field values |
+
+<Info>
+  `PERMISSIVE` mode means a malformed CSV will not cause the request to fail. Rows with parsing errors will appear with null values in the affected columns. If you need strict validation, this would need to be changed to `FAILFAST` mode.
+</Info>
+
+## Shuffle partitions
+
+<ParamField path="spark.sql.shuffle-partitions" type="long" default="4">
+  Declared in `config/config.def` with a default of `4`. This value is loaded and validated at startup but is not currently applied to the Spark session configuration.
+</ParamField>
+
+## Startup warmup
+
+After the session is created, Connector runs a warmup job before accepting HTTP traffic:
+
+```clojure connector/spark.clj
+(defn warmup-spark [spark]
+  (-> (sql/create-dataset spark [1 2 3 4])
+      (sql/count)))
+```
+
+This executes a trivial distributed count on a four-element dataset. It forces Spark to initialize its executor pool and JIT-compile the relevant code paths, so the first real data-load request does not pay that initialization cost.
+
+<Note>
+  If warmup fails (for example, because the Spark master is unreachable), the application exits immediately. The HTTP server will not start until warmup succeeds.
+</Note>
+
+## Session lifecycle
+
+The session is managed by Mount as a stateful component:
+
+- **Start**: `create-session` is called, then `warmup-spark`. The session is held in the `connector.spark/session` var.
+- **Stop**: `.stop` is called on the session, releasing executor resources and shutting down the Spark context.
+
+Calling `mount/stop` (e.g. during a graceful shutdown) will cleanly terminate the Spark session.

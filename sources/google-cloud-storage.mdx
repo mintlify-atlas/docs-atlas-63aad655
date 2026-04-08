@@ -1,0 +1,138 @@
+---
+title: 'Google Cloud Storage'
+description: 'Load a CSV file from Google Cloud Storage using the gcs source type, with support for public objects and service account authentication.'
+---
+
+## When to use
+
+Use the `gcs` source type to load a CSV file stored in a Google Cloud Storage bucket. Public objects need no credentials. Private objects require a GCP service account. Optionally, you can target a specific object generation.
+
+## How it works
+
+For private access, Connector assembles a service account JSON keyfile from the provided credentials and writes it to a temporary location. It then configures the Spark Hadoop GCS connector to use that keyfile for authentication. Spark reads the file directly from `gs://BUCKET/KEY`. No intermediate download step occurs.
+
+### Service account JSON format
+
+Connector generates the following JSON structure internally from your `auth` fields:
+
+```json
+{
+    "type": "service_account",
+    "project_id": "<auth.project-id>",
+    "private_key_id": "placeholder",
+    "private_key": "<auth.private-key>",
+    "client_email": "<auth.client-email>",
+    "client_id": "placeholder",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token"
+}
+```
+
+This file is written to a temp path, registered for deletion on JVM exit, and passed to the GCS connector via the `fs.gs.auth.service.account.json.keyfile` Hadoop configuration property.
+
+## Fields
+
+<ParamField body="type" type="string" required>
+  Must be `"gcs"`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  Must be `"csv"`.
+</ParamField>
+
+<ParamField body="link-type" type="string" required>
+  `"public"` for publicly accessible objects. `"private"` when service account credentials are required.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  <Expandable title="source fields">
+    <ParamField body="source.bucket" type="string" required>
+      The GCS bucket name. Must be a non-blank string.
+    </ParamField>
+    <ParamField body="source.key" type="string" required>
+      The object key (path within the bucket), e.g., `data/file.csv`. Must be a non-blank string.
+    </ParamField>
+    <ParamField body="source.generation" type="string">
+      Optional. The generation number of a specific object version. Appended as a fragment (`#GENERATION`) to the GCS path passed to Spark.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="auth" type="object">
+  Required when `link-type` is `"private"`.
+  <Expandable title="auth fields">
+    <ParamField body="auth.project-id" type="string" required>
+      GCP project ID.
+    </ParamField>
+    <ParamField body="auth.client-email" type="string" required>
+      Service account email address, e.g., `svc@project.iam.gserviceaccount.com`.
+    </ParamField>
+    <ParamField body="auth.private-key" type="string" required>
+      The service account's RSA private key in PEM format. Use `\n` for newlines in JSON strings — Connector converts them to actual newline characters automatically.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  <Expandable title="options fields">
+    <ParamField body="options.header" type="boolean" default="true">
+      Whether the first row of the CSV is a header row.
+    </ParamField>
+    <ParamField body="options.delimiter" type="string" default=",">
+      Column delimiter character.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Request examples
+
+<Tabs>
+  <Tab title="Public">
+    ```json
+    {
+        "type": "gcs",
+        "format": "csv",
+        "link-type": "public",
+        "source": {
+            "bucket": "my-gcs-bucket",
+            "key": "data/file.csv"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Private with generation">
+    ```json
+    {
+        "type": "gcs",
+        "format": "csv",
+        "link-type": "private",
+        "source": {
+            "bucket": "my-gcs-bucket",
+            "key": "data/file.csv",
+            "generation": "GENERATION-ID"
+        },
+        "auth": {
+            "project-id": "GCP-PROJECT-ID",
+            "client-email": "svc@project.iam.gserviceaccount.com",
+            "private-key": "-----BEGIN PRIVATE KEY-----..."
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  The `auth.private-key` value must include the full PEM block including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` headers. In JSON, embed newlines as `\n` — Connector automatically converts `\n` escape sequences to real newline characters before writing the keyfile.
+</Warning>
+
+<Info>
+  Spark reads from GCS using the `gs://` URI scheme via the GCS Hadoop connector. The service account must have at least `storage.objects.get` permission on the target object.
+</Info>

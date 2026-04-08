@@ -1,97 +1,73 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Connector"
+description: "Load CSV data from any source — Google Drive, Dropbox, Amazon S3, Google Cloud Storage, or local filesystem — with a single API call."
 ---
 
-## Setting up
+Connector is a Clojure HTTP service that provides a unified API for loading CSV data from multiple cloud storage providers and local filesystems. Backed by Apache Spark, it reads your data and returns a preview of the first 10 rows in a single POST request.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Send your first request in minutes — no setup required for public files
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="API Reference" icon="code" href="/api/data-load">
+    Full documentation for the POST /data-load endpoint
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Data Sources" icon="database" href="/sources/local">
+    Connect to Google Drive, Dropbox, S3, GCS, or local files
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Authentication" icon="lock" href="/guides/authentication">
+    Configure credentials for private files across all providers
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How it works
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Build and start the service">
+    Build the uberjar and start the Connector HTTP server on port 3000.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    ```bash
+    lein uberjar
+    lein run
+    ```
+  </Step>
+  <Step title="Send a POST request">
+    Call `POST /data-load` with a JSON body specifying the source type, file location, and any credentials.
 
-## Need inspiration?
+    ```bash
+    curl -X POST http://localhost:3000/data-load \
+        -H "Content-Type: application/json" \
+        -d '{
+            "type": "local",
+            "format": "csv",
+            "link-type": "public",
+            "source": { "path": "/data/input.csv" },
+            "options": { "header": true, "delimiter": "," }
+        }'
+    ```
+  </Step>
+  <Step title="Receive a preview response">
+    Connector returns a JSON response with the first 10 rows of your CSV data.
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    ```json
+    {
+        "status": "success",
+        "source": "local",
+        "duration-ms": 123,
+        "data": [
+            { "columnA": "value1", "columnB": "value2" }
+        ]
+    }
+    ```
+  </Step>
+</Steps>
+
+## Supported sources
+
+| Source | Public | Private |
+|--------|--------|---------|
+| Local filesystem | Yes | — |
+| Google Drive | Yes | Yes (OAuth2) |
+| Dropbox | Yes | Yes (token) |
+| Amazon S3 | Yes | Yes (IAM keys) |
+| Google Cloud Storage | Yes | Yes (service account) |

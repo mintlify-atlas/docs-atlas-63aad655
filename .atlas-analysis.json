@@ -1,0 +1,88 @@
+{
+  "projectType": "api-service",
+  "projectName": "Connector",
+  "projectDescription": "A Clojure HTTP service that loads CSV data from multiple cloud and local sources (Google Drive, Dropbox, Amazon S3, Google Cloud Storage, local filesystem) via Apache Spark and returns a preview response.",
+  "theme": "luma",
+  "primaryColor": "#ef7025",
+  "lightColor": "#eec9bc",
+  "darkColor": "#4fa1ab",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/spark"
+            ]
+          },
+          {
+            "group": "Data Sources",
+            "pages": [
+              "sources/local",
+              "sources/google-drive",
+              "sources/dropbox",
+              "sources/amazon-s3",
+              "sources/google-cloud-storage"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/authentication",
+              "guides/running-and-building",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/data-load"
+            ]
+          },
+          {
+            "group": "Request & Response",
+            "pages": [
+              "api/request-body",
+              "api/response-format"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Single POST endpoint for loading CSV data from any supported source",
+    "Support for public and private files with per-provider authentication",
+    "Apache Spark-backed data loading for scalable CSV processing",
+    "Google Drive integration with OAuth2 refresh token flow and revision support",
+    "Dropbox integration supporting public links, private tokens, and revision downloads",
+    "Amazon S3 integration with IAM credentials and object versioning",
+    "Google Cloud Storage integration with service account JSON authentication",
+    "Local filesystem support for on-disk CSV files",
+    "JSON request validation with detailed error messages",
+    "Returns up to 10 preview rows per request"
+  ],
+  "publicApiSurface": [
+    "POST /data-load",
+    "validate-body! — validates request body against clojure.spec",
+    "read-dataset — loads CSV into Spark from any configured source",
+    "fetch-file! — downloads remote file from GDrive or Dropbox to a temp path",
+    "dataset->preview — converts first 10 Spark rows to list of maps",
+    "load-config! — loads application config from EDN file"
+  ]
+}

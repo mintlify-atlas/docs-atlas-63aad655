@@ -1,0 +1,121 @@
+---
+title: 'Request body schema'
+description: 'Full reference for every field in the POST /data-load request body, with per-provider required field matrix.'
+---
+
+## Top-level fields
+
+<ParamField body="type" type="string" required>
+  Source type. One of: `local` | `gdrive` | `dropbox` | `s3` | `gcs`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  File format. Must be `"csv"`. No other formats are supported.
+</ParamField>
+
+<ParamField body="link-type" type="string" default="public">
+  Access mode. One of: `"public"` | `"private"`. Defaults to `"public"` when omitted.
+  Private sources require credentials in the `auth` object.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  Source location. Required sub-fields depend on `type` and `link-type`. See the [per-provider matrix](#per-provider-required-fields) below.
+
+  <Expandable title="source properties">
+    <ParamField body="path" type="string">
+      File path. Required for `local`. For `dropbox` with `link-type: "private"`, this is the Dropbox path (e.g. `/customers-100000.csv`).
+    </ParamField>
+    <ParamField body="url" type="string">
+      URL that must start with `http`. Required for `gdrive` (public or private share link). For `dropbox` with `link-type: "public"`, this is the Dropbox share link.
+    </ParamField>
+    <ParamField body="bucket" type="string">
+      S3 or GCS bucket name. Required for `s3` and `gcs`.
+    </ParamField>
+    <ParamField body="key" type="string">
+      S3 or GCS object key (path within the bucket). Required for `s3` and `gcs`.
+    </ParamField>
+    <ParamField body="region" type="string">
+      AWS region identifier (e.g. `ap-south-1`). Used for `s3`. Optional — when omitted, the default S3 endpoint is used.
+    </ParamField>
+    <ParamField body="revision-id" type="string">
+      Google Drive revision ID or Dropbox revision. Optional. When provided for `gdrive`, the specific revision is downloaded using the Drive v3 API.
+    </ParamField>
+    <ParamField body="version-id" type="string">
+      S3 object version ID. Optional. When provided, the specified object version is fetched.
+    </ParamField>
+    <ParamField body="generation" type="string">
+      GCS object generation number. Optional. When provided, appended to the GCS path as a fragment (e.g. `gs://bucket/key#GENERATION`).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="auth" type="object">
+  Provider credentials. Required when `link-type` is `"private"`. Required sub-fields depend on `type`. See the [per-provider matrix](#per-provider-required-fields) below.
+
+  <Expandable title="auth properties">
+    <ParamField body="token" type="string">
+      Dropbox API token. Required for `dropbox` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="refresh-token" type="string">
+      Google OAuth2 refresh token. Required for `gdrive` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="client-id" type="string">
+      Google OAuth2 client ID. Required for `gdrive` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="client-secret" type="string">
+      Google OAuth2 client secret. Required for `gdrive` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="access-key" type="string">
+      AWS IAM access key ID. Required for `s3` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="secret-key" type="string">
+      AWS IAM secret access key. Required for `s3` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="project-id" type="string">
+      GCP project ID. Required for `gcs` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="client-email" type="string">
+      GCP service account email (e.g. `svc@project.iam.gserviceaccount.com`). Required for `gcs` with `link-type: "private"`.
+    </ParamField>
+    <ParamField body="private-key" type="string">
+      GCP service account private key in PEM format. Use `\n` to represent newlines in the JSON string. Required for `gcs` with `link-type: "private"`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  CSV parsing options passed to Apache Spark.
+
+  <Expandable title="options properties">
+    <ParamField body="header" type="boolean" default="true">
+      When `true`, the first row is treated as a header and used as column names in the response. When `false`, Spark assigns default column names (`_c0`, `_c1`, etc.).
+    </ParamField>
+    <ParamField body="delimiter" type="string" default=",">
+      Column delimiter character. Use `"\t"` for tab-separated files.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Per-provider required fields
+
+The table below lists every field that must be present for a given provider and `link-type` combination. Optional fields (e.g. `revision-id`, `version-id`, `generation`) are omitted from this matrix.
+
+<Warning>
+  Missing any required field for the active provider causes a `400` validation error.
+</Warning>
+
+| Provider | `link-type` | Required `source` fields | Required `auth` fields |
+|---|---|---|---|
+| `local` | `public` | `path` | — |
+| `gdrive` | `public` | `url` | — |
+| `gdrive` | `private` | `url` | `refresh-token`, `client-id`, `client-secret` |
+| `dropbox` | `public` | `url` | — |
+| `dropbox` | `private` | `path` | `token` |
+| `s3` | `public` | `bucket`, `key` | — |
+| `s3` | `private` | `bucket`, `key` | `access-key`, `secret-key` |
+| `gcs` | `public` | `bucket`, `key` | — |
+| `gcs` | `private` | `bucket`, `key` | `project-id`, `client-email`, `private-key` |
+
+<Note>
+  `region` is accepted for both public and private `s3` requests. When omitted, the Hadoop S3A filesystem uses its default endpoint. Providing `region` sets the endpoint to `s3.<region>.amazonaws.com`.
+</Note>

@@ -1,0 +1,87 @@
+---
+title: 'Configuration overview'
+description: 'How Connector loads and validates application configuration at startup.'
+---
+
+Connector uses [omniconf](https://github.com/grammarly/omniconf) to load configuration from an EDN file at startup. All values are validated before the server accepts traffic — missing required fields cause an immediate startup failure.
+
+## Loading config
+
+Configuration is read from `config/config.edn` by the `load-config!` function in `connector.config`:
+
+```clojure connector/config.clj
+(defn load-config!
+  "Loads and verifies application configuration from the given path."
+  [path]
+  (cfg/populate-from-file path)
+  (cfg/verify))
+```
+
+This is called at the start of `-main` before any other components are initialized:
+
+```clojure connector/core.clj
+(app-config/load-config! "config/config.edn")
+(mount/start)
+```
+
+<Note>
+  The path passed to `load-config!` is relative to the working directory of the running process. When running via `lein run` or the uberjar, this is the project root, so `config/config.edn` resolves correctly.
+</Note>
+
+## Config schema
+
+The full schema is defined in `config/config.def`.
+
+### Server
+
+<ParamField path="server.port" type="long" default="3000">
+  The port the Jetty HTTP server listens on. Change this if port 3000 is already in use or if your deployment environment requires a specific port.
+</ParamField>
+
+### Spark — application
+
+<ParamField path="spark.app.name" type="string" required>
+  The name of the Spark application. This appears in the Spark UI and cluster logs. Use a descriptive name to identify this instance (e.g. `connector-prod`).
+</ParamField>
+
+<ParamField path="spark.app.master-url" type="string" required>
+  The Spark master URL. For a standalone cluster this is typically `spark://host:7077`. For local development use `local[*]` to run all executors in-process.
+</ParamField>
+
+### Spark — SQL
+
+<ParamField path="spark.sql.shuffle-partitions" type="long" default="4">
+  Declared in the config schema with a default of `4`. Currently accepted by the configuration loader but not applied to the Spark session.
+</ParamField>
+
+## Example config.edn
+
+```clojure config/config.edn
+{:server {:port 3000}
+ :spark {:app {:name "connector-app"
+               :master-url "spark://your-host:7077"}
+         :sql {:shuffle-partitions 4}}}
+```
+
+For local development with Spark running in-process:
+
+```clojure config/config.edn
+{:server {:port 3000}
+ :spark {:app {:name "connector-dev"
+               :master-url "local[*]"}
+         :sql {:shuffle-partitions 4}}}
+```
+
+## Startup validation
+
+When `cfg/verify` runs, omniconf checks:
+
+- All `:required true` fields are present and non-nil.
+- All values match their declared `:type`.
+- No unknown keys are present.
+
+If validation fails, the process exits immediately with an error describing the missing or invalid field. There is no partial startup — the HTTP server will not start until configuration is valid.
+
+<Warning>
+  Do not remove or rename keys in `config/config.edn`. The schema in `config/config.def` is authoritative. Any key not declared in the schema will cause a verification error.
+</Warning>

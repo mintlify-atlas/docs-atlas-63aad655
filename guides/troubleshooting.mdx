@@ -1,0 +1,190 @@
+---
+title: 'Troubleshooting'
+description: 'Common issues and solutions for Connector startup failures, request errors, and data load problems.'
+---
+
+<AccordionGroup>
+  <Accordion title="Startup failures">
+    **Missing required configuration**
+
+    Connector will not start if either `spark.app.name` or `spark.app.master-url` is absent from `config/config.edn`. Both fields are required with no default value.
+
+    Check that your `config/config.edn` includes both:
+
+    ```clojure
+    {:server {:port 3000}
+     :spark {:app {:name "connector-app"
+                   :master-url "spark://your-host:7077"}}}
+    ```
+
+    ---
+
+    **Spark connection failed**
+
+    If Connector starts but the warmup job fails, the Spark master URL is either unreachable or incorrect.
+
+    - Verify the Spark cluster is running and the master is accessible from the Connector host.
+    - Confirm the `master-url` matches the format `spark://host:port` (default Spark port is `7077`).
+    - Check network routing and firewall rules between the Connector host and the Spark master.
+
+    ---
+
+    **Java version mismatch**
+
+    Connector requires JDK 17. Running on any other version will produce errors at startup or during dataset reads.
+
+    Verify:
+
+    ```bash
+    java -version
+    ```
+
+    The output must show major version `17`. If it does not, install JDK 17 and update your `JAVA_HOME` and `PATH`.
+  </Accordion>
+
+  <Accordion title="Request errors (400)">
+    A `400` response means the request body failed validation. The `error` field in the response contains the spec explanation.
+
+    **Example 400 response**
+
+    ```json
+    {
+      "status": "error",
+      "msg": "Invalid request body",
+      "error": "-- Spec failed...",
+      "duration-ms": 15
+    }
+    ```
+
+    **Common causes**
+
+    | Problem | Fix |
+    |---|---|
+    | Invalid `type` | Must be one of: `local`, `gdrive`, `dropbox`, `s3`, `gcs` |
+    | Invalid `format` | Only `"csv"` is supported |
+    | Missing top-level field | `type`, `format`, `source`, and `options` are all required |
+
+    **Provider-specific required fields**
+
+    Each combination of `type` and `link-type` has its own required fields. Missing any of the following will produce a 400.
+
+    <Tabs>
+      <Tab title="Google Drive (private)">
+        | Field | Location |
+        |---|---|
+        | `refresh-token` | `auth.refresh-token` |
+        | `client-id` | `auth.client-id` |
+        | `client-secret` | `auth.client-secret` |
+        | `url` | `source.url` |
+      </Tab>
+      <Tab title="Dropbox (private)">
+        | Field | Location |
+        |---|---|
+        | `path` | `source.path` |
+        | `token` | `auth.token` |
+      </Tab>
+      <Tab title="Amazon S3 (private)">
+        | Field | Location |
+        |---|---|
+        | `bucket` | `source.bucket` |
+        | `key` | `source.key` |
+        | `access-key` | `auth.access-key` |
+        | `secret-key` | `auth.secret-key` |
+      </Tab>
+      <Tab title="Google Cloud Storage (private)">
+        | Field | Location |
+        |---|---|
+        | `bucket` | `source.bucket` |
+        | `key` | `source.key` |
+        | `project-id` | `auth.project-id` |
+        | `client-email` | `auth.client-email` |
+        | `private-key` | `auth.private-key` |
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="Data load failures (500)">
+    A `500` response means Connector successfully validated the request but encountered an error while downloading or reading the file. The response body does not include error details for security reasons; check server logs for the full exception.
+
+    **Example 500 response**
+
+    ```json
+    {
+      "status": "error",
+      "msg": "Internal server error",
+      "duration-ms": 20
+    }
+    ```
+
+    **Amazon S3 — access denied**
+
+    The IAM credentials do not have permission to read the specified object.
+
+    - Verify `access-key` and `secret-key` are correct and belong to an active IAM user.
+    - Confirm the IAM policy grants `s3:GetObject` on the target bucket and key.
+    - Check that the `region` in `source.region` matches the bucket's actual region.
+
+    ---
+
+    **Google Cloud Storage — access denied**
+
+    The service account does not have permission to read the specified object.
+
+    - Verify the service account has the **Storage Object Viewer** role on the target bucket.
+    - Confirm `client-email` matches the service account that owns the private key.
+    - Check that the `private-key` value is correct and newlines are properly encoded.
+
+    ---
+
+    **Google Drive — download failed**
+
+    The OAuth2 credentials are valid but the file cannot be downloaded.
+
+    - Verify the file is shared with the Google account associated with the OAuth2 credentials, or that it is accessible with the Drive API.
+    - Confirm the refresh token has the `https://www.googleapis.com/auth/drive.readonly` scope.
+    - Check that `client-id` and `client-secret` match the OAuth2 app that issued the refresh token.
+
+    ---
+
+    **Dropbox — download failed**
+
+    - Verify the Dropbox API token has not expired. Dropbox long-lived tokens can be revoked from the app settings page.
+    - For private access, confirm `source.path` is the exact Dropbox path to the file (e.g., `/reports/data.csv`), not a shared link URL.
+
+    ---
+
+    **Local filesystem — file not found**
+
+    Connector reads from the local filesystem of the machine running the service. Verify:
+
+    - The `source.path` is an absolute path accessible by the Connector process.
+    - The file exists and the process has read permission.
+  </Accordion>
+
+  <Accordion title="Response format issues">
+    **Data is capped at 10 rows**
+
+    Connector returns a preview of the dataset, not the full file. The response is limited to 10 rows by design. This is not configurable.
+
+    ---
+
+    **Column names are missing or unexpected**
+
+    Column names in the response come from the first row of the CSV file when `options.header` is `true` (the default). If `header` is `false`, Spark assigns generated column names.
+
+    Ensure the `header` field in `options` matches whether your CSV file has a header row:
+
+    ```json
+    "options": {
+      "header": true,
+      "delimiter": ","
+    }
+    ```
+
+    ---
+
+    **Null or empty values appear as `null` in the response**
+
+    Connector configures Spark to treat empty strings as null values. Any empty or blank cell in the CSV will appear as `null` in the JSON response. This is expected behavior.
+  </Accordion>
+</AccordionGroup>

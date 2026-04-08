@@ -1,0 +1,137 @@
+---
+title: 'Running and building'
+description: 'How to configure, build, and run the Connector service.'
+---
+
+## Prerequisites
+
+Before building or running Connector, ensure the following are available on your system.
+
+**JDK 17**
+
+Connector requires JDK 17. Verify your installation:
+
+```bash
+java -version
+```
+
+The output should show major version `17`. Other versions are not supported and will cause runtime errors.
+
+**Leiningen 2.0.0+**
+
+Leiningen is the Clojure build tool used to compile and run Connector. Install it from [https://leiningen.org](https://leiningen.org) or via your system package manager.
+
+Verify:
+
+```bash
+lein --version
+```
+
+**Apache Spark cluster**
+
+Connector submits jobs to an Apache Spark cluster. You must have a running Spark cluster with a reachable master URL before starting Connector for non-local data sources. The Spark warmup job runs at startup to initialize executors.
+
+---
+
+## Build and run
+
+<Steps>
+  <Step title="Configure the application">
+    Edit `config/config.edn` in the project root before starting. The two required Spark fields have no defaults and must be set:
+
+    ```clojure
+    {:server {:port 3000}
+     :spark {:app {:name "connector-app"
+                   :master-url "spark://your-host:7077"}}}
+    ```
+
+    | Key | Required | Default | Description |
+    |---|---|---|---|
+    | `:server :port` | No | `3000` | HTTP server port |
+    | `:spark :app :name` | Yes | — | Spark application name |
+    | `:spark :app :master-url` | Yes | — | Spark master URL (e.g., `spark://host:7077`) |
+
+    <Note>
+      `:spark :app :name` and `:spark :app :master-url` are required. The service will fail to start if either is missing.
+    </Note>
+  </Step>
+
+  <Step title="Build the uberjar">
+    From the project root, compile and package the application into a standalone JAR:
+
+    <CodeGroup>
+
+    ```bash lein
+    lein uberjar
+    ```
+
+    </CodeGroup>
+
+    Output artifact:
+
+    ```text
+    target/connector-0.1.0-SNAPSHOT-standalone.jar
+    ```
+  </Step>
+
+  <Step title="Start the service">
+    Start the HTTP server:
+
+    <CodeGroup>
+
+    ```bash lein
+    lein run
+    ```
+
+    </CodeGroup>
+
+    The startup log will print the HTTP port once the server is ready. The Spark warmup job runs automatically at startup to initialize executors before the first request.
+  </Step>
+
+  <Step title="Verify the service is running">
+    Once started, the API is available at:
+
+    ```text
+    http://localhost:3000
+    ```
+
+    Send a test request:
+
+    ```bash
+    curl -X POST http://localhost:3000/data-load \
+      -H "Content-Type: application/json" \
+      -d '{
+        "type": "local",
+        "format": "csv",
+        "link-type": "public",
+        "source": { "path": "/data/input.csv" },
+        "options": { "header": true, "delimiter": "," }
+      }'
+    ```
+
+    Requests to any path other than `/data-load` return a 404 response:
+
+    ```json
+    {"error": "NOT_FOUND"}
+    ```
+  </Step>
+</Steps>
+
+---
+
+## JVM flags
+
+The following JVM flags are configured in `project.clj` and applied automatically when using `lein run` or executing the standalone JAR:
+
+| Flag | Purpose |
+|---|---|
+| `-server` | Enables server-mode JIT compilation |
+| `-Xmx2g` | Sets maximum heap to 2 GB |
+| `--add-opens=java.base/java.io=ALL-UNNAMED` | Required for Spark/Hadoop reflection |
+| `--add-opens=java.base/java.nio=ALL-UNNAMED` | Required for Spark/Hadoop reflection |
+| `--add-opens=java.base/java.lang.invoke=ALL-UNNAMED` | Required for Spark/Hadoop reflection |
+| `--add-opens=java.base/java.util=ALL-UNNAMED` | Required for Spark/Hadoop reflection |
+| `--add-opens=java.base/sun.nio.ch=ALL-UNNAMED` | Required for Spark/Hadoop reflection |
+| `--add-opens=java.base/sun.util.calendar=ALL-UNNAMED` | Required for Spark/Hadoop reflection |
+
+These flags are necessary for Spark 3.5 and Hadoop compatibility on JDK 17, which restricts reflective access by default.

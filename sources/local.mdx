@@ -1,0 +1,62 @@
+---
+title: 'Local filesystem'
+description: "Load a CSV file from the server's local filesystem using the local source type."
+---
+
+## When to use
+
+Use the `local` source type when your CSV file is already present on the server running the Connector process. This is the simplest source type — no authentication is required, and no network calls are made. Spark reads the file directly from the path you provide.
+
+## Fields
+
+<ParamField body="type" type="string" required>
+  Must be `"local"`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  Must be `"csv"`.
+</ParamField>
+
+<ParamField body="link-type" type="string" default="public">
+  Always `"public"` for local files. No authentication is supported or needed.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  <Expandable title="source fields">
+    <ParamField body="source.path" type="string" required>
+      Absolute path to the CSV file on the server's filesystem. Must be a non-blank string. The Connector process must have read access to this path.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  <Expandable title="options fields">
+    <ParamField body="options.header" type="boolean" default="true">
+      Whether the first row of the CSV is a header row.
+    </ParamField>
+    <ParamField body="options.delimiter" type="string" default=",">
+      Column delimiter character.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Request example
+
+```json
+{
+    "type": "local",
+    "format": "csv",
+    "link-type": "public",
+    "source": {
+        "path": "/data/input.csv"
+    },
+    "options": {
+        "header": true,
+        "delimiter": ","
+    }
+}
+```
+
+<Note>
+  `source.path` must be an absolute path (e.g., `/data/input.csv`). Relative paths are not supported. The file must be readable by the OS user running the Connector process.
+</Note>

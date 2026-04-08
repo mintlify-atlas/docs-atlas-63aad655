@@ -1,0 +1,145 @@
+---
+title: 'Response format'
+description: 'Structure of all responses returned by the POST /data-load endpoint, including success, validation error, internal error, and not-found.'
+---
+
+## 200 Success
+
+Returned when the CSV file was loaded and parsed without error.
+
+<ResponseExample>
+
+```json 200
+{
+    "status": "success",
+    "source": "s3",
+    "duration-ms": 843,
+    "data": [
+        { "id": "1", "name": "Alice", "amount": "99.50" },
+        { "id": "2", "name": "Bob", "amount": "12.00" }
+    ]
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="status" type="string" required>
+  Always `"success"`.
+</ResponseField>
+
+<ResponseField name="source" type="string" required>
+  The source type used for the request, echoed from the `type` field of the request body (e.g. `"local"`, `"gdrive"`, `"dropbox"`, `"s3"`, `"gcs"`).
+</ResponseField>
+
+<ResponseField name="duration-ms" type="number" required>
+  Total processing time in milliseconds. Includes network download time (for cloud sources) and Apache Spark CSV read time.
+</ResponseField>
+
+<ResponseField name="data" type="array" required>
+  Preview rows from the CSV file.
+
+  <Expandable title="data item properties">
+    <ResponseField name="[column name]" type="string">
+      Each element of the array is an object. Keys are column names derived from the CSV header row (when `options.header` is `true`). Values are strings. Empty or null cells are returned as `null`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  A maximum of 10 rows are returned regardless of file size. This is a preview endpoint, not a full data export.
+  Column names are taken from the first row of the file when `options.header` is `true`. When `header` is `false`, Spark assigns default column names (`_c0`, `_c1`, etc.).
+  If the CSV contains malformed rows, Spark reads in `PERMISSIVE` mode and adds a `_corrupt_record` column containing the raw unparseable text for those rows.
+</Note>
+
+---
+
+## 400 Validation error
+
+Returned when the request body fails schema validation. The response includes a detailed error string from `clojure.spec/explain-str` to help identify the failing field.
+
+<ResponseExample>
+
+```json 400
+{
+    "status": "error",
+    "msg": "Invalid request body",
+    "error": "val: {\"type\" \"ftp\", ...} fails spec: :connector.specs/valid-body ...",
+    "duration-ms": 15
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="status" type="string" required>
+  Always `"error"`.
+</ResponseField>
+
+<ResponseField name="msg" type="string" required>
+  Always `"Invalid request body"`.
+</ResponseField>
+
+<ResponseField name="error" type="string" required>
+  Detailed validation output from `clojure.spec/explain-str`. Describes which field failed and why.
+</ResponseField>
+
+<ResponseField name="duration-ms" type="number" required>
+  Time elapsed before the validation error was raised, in milliseconds.
+</ResponseField>
+
+Common causes of a `400` response:
+
+- `type` is not one of: `local`, `gdrive`, `dropbox`, `s3`, `gcs`
+- `format` is not `"csv"`
+- A required `source` field is missing for the given `type` (e.g. no `path` for `local`, no `url` for `gdrive`)
+- A required `auth` field is missing for `link-type: "private"` (e.g. no `token` for `dropbox` private)
+- `source` or `options` keys are absent entirely
+
+---
+
+## 500 Internal error
+
+Returned when an unhandled exception occurs during processing, such as a Spark read failure, unreachable storage, or authentication rejection from the cloud provider.
+
+<ResponseExample>
+
+```json 500
+{
+    "status": "error",
+    "msg": "Internal server error",
+    "duration-ms": 20
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="status" type="string" required>
+  Always `"error"`.
+</ResponseField>
+
+<ResponseField name="msg" type="string" required>
+  Always `"Internal server error"`.
+</ResponseField>
+
+<ResponseField name="duration-ms" type="number" required>
+  Time elapsed before the error occurred, in milliseconds.
+</ResponseField>
+
+<Warning>
+  Internal error details (exception class, stack trace, cloud provider messages) are deliberately omitted from the `500` response body. Check server logs for the full error context.
+</Warning>
+
+---
+
+## 404 Not found
+
+<ResponseExample>
+
+```json 404
+{
+    "error": "NOT_FOUND"
+}
+```
+
+</ResponseExample>
+
+Any request path other than `/data-load` returns a `404` response with the body `{"error": "NOT_FOUND"}`. This applies to all HTTP methods.

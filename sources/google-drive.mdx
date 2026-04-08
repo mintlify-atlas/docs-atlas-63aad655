@@ -1,0 +1,122 @@
+---
+title: 'Google Drive'
+description: 'Load a CSV file from Google Drive using the gdrive source type, with support for public files, private OAuth2 access, and specific revision downloads.'
+---
+
+## When to use
+
+Use the `gdrive` source type to load a CSV file hosted on Google Drive. Public files need only a URL. Private files require OAuth2 credentials. You can also target a specific revision of a file.
+
+## Supported URL formats
+
+Connector extracts the file ID from any of the following Google Drive URL patterns:
+
+- `/file/d/FILE_ID`
+- `?id=FILE_ID`
+- `/open?id=FILE_ID`
+
+## How it works
+
+When a request arrives, Connector extracts the file ID from `source.url`. For private access or revision downloads, it first exchanges the refresh token for a short-lived access token using the Google OAuth2 token endpoint. It then downloads the file to a temporary location and passes that path to Spark for reading.
+
+## Fields
+
+<ParamField body="type" type="string" required>
+  Must be `"gdrive"`.
+</ParamField>
+
+<ParamField body="format" type="string" required>
+  Must be `"csv"`.
+</ParamField>
+
+<ParamField body="link-type" type="string" required>
+  `"public"` for files shared publicly. `"private"` when OAuth2 credentials are required.
+</ParamField>
+
+<ParamField body="source" type="object" required>
+  <Expandable title="source fields">
+    <ParamField body="source.url" type="string" required>
+      A Google Drive sharing URL. Must start with `http`. The file ID is extracted automatically.
+    </ParamField>
+    <ParamField body="source.revision-id" type="string">
+      Optional. The ID of a specific file revision to download. Requires `auth` credentials even if the file is otherwise public.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="auth" type="object">
+  Required when `link-type` is `"private"` or when `source.revision-id` is provided.
+  <Expandable title="auth fields">
+    <ParamField body="auth.client-id" type="string" required>
+      Google OAuth2 client ID.
+    </ParamField>
+    <ParamField body="auth.client-secret" type="string" required>
+      Google OAuth2 client secret.
+    </ParamField>
+    <ParamField body="auth.refresh-token" type="string" required>
+      OAuth2 refresh token. Used to obtain a short-lived access token at request time.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="options" type="object" required>
+  <Expandable title="options fields">
+    <ParamField body="options.header" type="boolean" default="true">
+      Whether the first row of the CSV is a header row.
+    </ParamField>
+    <ParamField body="options.delimiter" type="string" default=",">
+      Column delimiter character.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Request examples
+
+<Tabs>
+  <Tab title="Public">
+    ```json
+    {
+        "type": "gdrive",
+        "format": "csv",
+        "link-type": "public",
+        "source": {
+            "url": "https://drive.google.com/file/d/FILE_ID/view?usp=sharing"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Private with revision">
+    ```json
+    {
+        "type": "gdrive",
+        "format": "csv",
+        "link-type": "private",
+        "source": {
+            "url": "https://drive.google.com/file/d/FILE_ID/view?usp=sharing",
+            "revision-id": "REV-ID"
+        },
+        "auth": {
+            "client-id": "xxxx",
+            "client-secret": "xxxx",
+            "refresh-token": "xxxx"
+        },
+        "options": {
+            "header": true,
+            "delimiter": ","
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  The refresh token must have been granted Google Drive read scope (`https://www.googleapis.com/auth/drive.readonly` or equivalent). Tokens without Drive access will cause the download to fail with a 403 error.
+</Warning>
+
+<Note>
+  When `source.revision-id` is provided, Connector always performs a token refresh, regardless of `link-type`. Supply `auth` credentials even for files that are otherwise publicly shared.
+</Note>
